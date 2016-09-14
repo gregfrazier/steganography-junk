@@ -4,10 +4,17 @@
 
 #define fopen_s(pFile,filename,mode) ((*(pFile))=fopen((filename),(mode)))==NULL
 
-char *loadFile(char *pszFilename, long *lgSize)
+double calcLuma(unsigned char red, unsigned char green, unsigned char blue)
+{
+	double nits;
+	nits = (.27 * (unsigned char)red) + (.67 * (unsigned char)green) + (.06 * (unsigned char)blue);
+	return nits;
+}
+
+unsigned char *loadFile(char *pszFilename, long *lgSize)
 {
 	FILE *TARGET;
-	char *mem, *ptr2;
+	unsigned char *mem, *ptr2;
 	long h = 0;
 
 	fopen_s(&TARGET, pszFilename, "rb");
@@ -22,7 +29,7 @@ char *loadFile(char *pszFilename, long *lgSize)
 	h = ftell(TARGET);
 	*lgSize = h;
 	fseek(TARGET, 0L, SEEK_SET);
-	mem = (char*)malloc(h+1);
+	mem = (unsigned char*)malloc(h+1);
 	if(!mem)
 	{
 		printf("loadFile(): Memory not allocated\n");
@@ -34,10 +41,10 @@ char *loadFile(char *pszFilename, long *lgSize)
 	return mem;
 }
 
-char *readBMP(char *pszFilename, long *lgSize)
+unsigned char *readBMP(char *pszFilename, long *lgSize)
 {
 	FILE *TARGET;
-	char *mem;
+	unsigned char *mem;
 	long h = 0;
 	unsigned char bitmapFileHeader[14];
 	unsigned char bitmapInfoHeader[40];
@@ -68,7 +75,7 @@ char *readBMP(char *pszFilename, long *lgSize)
 	          (bitmapInfoHeader[23] << 24);
 	h = (long) rawsize - 54;
 
-	mem = (char*)malloc(h+1);
+	mem = (unsigned char*)malloc(h+1);
 	if(mem == NULL)
 	{
 		printf("readBMP(): Memory not allocated\n");
@@ -87,8 +94,8 @@ int main(int argc, char **argv)
 	long fileSize, stenoSize;
 	unsigned int w, h, m = 0;
 	FILE *writeFile;
-	char *filecontents = 0;
-	char *stenoContents = 0;
+	unsigned char *filecontents = 0;
+	unsigned char *stenoContents = 0;
 	unsigned char xorChar = 0x3d;
 
 	filecontents = loadFile(argv[1], &fileSize);
@@ -152,16 +159,23 @@ int main(int argc, char **argv)
 
 	for(unsigned int x = 0; x < fileSize; x++)
 	{
-		unsigned char xc1 = ((filecontents[x] & 0x0F) + stenoContents[x*3]) % 255;
-		unsigned char xc2 = stenoContents[(x*3)+1];
-		unsigned char xc3 = (((filecontents[x] >> 4) & 0x0F) + stenoContents[(x*3)+2]) % 255;
+		// green/yellow dominates high intensity whitish colors, trying to combat that.
+		int luma = (int)(calcLuma(stenoContents[(x*3)+2], stenoContents[(x*3)+1], stenoContents[x*3]) + 0.5);
+		double divisor = 1;
+
+		if(luma >= 180 || stenoContents[(x*3)+1] >= 180)
+			divisor = 0.90;
+		
+		unsigned char xc1 = ((filecontents[x] & 0x0F) + ((unsigned char)(stenoContents[x*3] * divisor))) % 255;
+		unsigned char xc2 = ((unsigned char)(stenoContents[(x*3)+1] * divisor));
+		unsigned char xc3 = (((filecontents[x] >> 4) & 0x0F) + ((unsigned char)(stenoContents[(x*3)+2] * divisor))) % 255;
 
 		fwrite(&xc1, 1, 1, writeFile);
 		fwrite(&xc2, 1, 1, writeFile);
 		fwrite(&xc3, 1, 1, writeFile);
 	}
 
-	for(unsigned int x = 0; x < rawsize - fileSize; x++)
+	for(unsigned int x = 0; x < rawsize - (fileSize * 3); x++)
 	{
 		unsigned char xc = stenoContents[(fileSize * 3) + x];
 		fwrite(&xc, 1, 1, writeFile);
