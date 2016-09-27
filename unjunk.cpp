@@ -6,10 +6,10 @@
 #define fopen_s(pFile,filename,mode) ((*(pFile))=fopen((filename),(mode)))==NULL
 #endif
 
-char *readBMP(char *pszFilename, long *lgSize)
+unsigned char *readBMP(char *pszFilename, long *lgSize)
 {
 	FILE *TARGET;
-	char *mem;
+	unsigned char *mem;
 	long h = 0;
 	unsigned char bitmapFileHeader[14];
 	unsigned char bitmapInfoHeader[40];
@@ -23,8 +23,8 @@ char *readBMP(char *pszFilename, long *lgSize)
 		return 0;
 	}
 
-	fread(&bitmapFileHeader, sizeof(char) * 14, 1, TARGET);
-	fread(&bitmapInfoHeader, sizeof(char) * 40, 1, TARGET);
+	fread(&bitmapFileHeader, sizeof(unsigned char) * 14, 1, TARGET);
+	fread(&bitmapInfoHeader, sizeof(unsigned char) * 40, 1, TARGET);
 
 	if(bitmapInfoHeader[14] != 24)
 	{
@@ -42,7 +42,7 @@ char *readBMP(char *pszFilename, long *lgSize)
 
 	printf("%d\n", rawsize);
 
-	mem = (char*)malloc(h+1);
+	mem = (unsigned char*)malloc(h+1);
 	if(mem == NULL)
 	{
 		printf("readBMP(): Memory not allocated\n");
@@ -62,8 +62,8 @@ int main(int argc, char **argv)
 	unsigned int w, h;
 	FILE *writeFile;
 	unsigned char xorChar = 0x3d;
-	char *filecontents = 0;
-	char *stenoContents = 0;
+	unsigned char *filecontents = 0;
+	unsigned char *stenoContents = 0;
 
 	filecontents = readBMP(argv[1], &fileSize);
 	if(filecontents == 0)
@@ -86,11 +86,15 @@ int main(int argc, char **argv)
 		return -1;
 	}
 
+	double divisor = 0.90;
+
 	for(unsigned int x = 0; x < fileSize; x += 3)
 	{
-		unsigned char xc1 = filecontents[x] - stenoContents[x];
-		unsigned char xc2 = filecontents[x+2] - stenoContents[x+2];
-		unsigned char xc = ((xc2 << 4) & 0xF0) | (xc1 & 0x0F);
+		unsigned char xc1 = filecontents[x]   - (unsigned char)(stenoContents[x]   * divisor);
+		unsigned char xc2 = filecontents[x+1] - (unsigned char)(stenoContents[x+1] * divisor);
+		unsigned char xc3 = filecontents[x+2] - (unsigned char)(stenoContents[x+2] * divisor);
+		unsigned char xc = ((xc3 << 5) & 0xE0) | ((xc2 << 3) & 0x18) | (xc1 & 0x07);
+		//((xc2 << 4) & 0xF0) | (xc1 & 0x0F);
 		fwrite(&xc, 1, 1, writeFile);
 	}
 

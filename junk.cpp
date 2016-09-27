@@ -2,7 +2,9 @@
 #include <stdlib.h>
 #include <math.h>
 
+#ifndef _MSC_VER
 #define fopen_s(pFile,filename,mode) ((*(pFile))=fopen((filename),(mode)))==NULL
+#endif
 
 double calcLuma(unsigned char red, unsigned char green, unsigned char blue)
 {
@@ -160,15 +162,17 @@ int main(int argc, char **argv)
 	for(unsigned int x = 0; x < fileSize; x++)
 	{
 		// green/yellow dominates high intensity whitish colors, trying to combat that.
-		int luma = (int)(calcLuma(stenoContents[(x*3)+2], stenoContents[(x*3)+1], stenoContents[x*3]) + 0.5);
-		double divisor = 1;
+		//int luma = (int)(calcLuma(stenoContents[(x*3)+2], stenoContents[(x*3)+1], stenoContents[x*3]) + 0.5);
+		double divisor = 0.90; //1;
 
-		if(luma >= 180 || stenoContents[(x*3)+1] >= 180)
-			divisor = 0.90;
+		//if(luma >= 180 || stenoContents[(x*3)+1] >= 180)
+		//	divisor = 0.90;
 		
-		unsigned char xc1 = ((filecontents[x] & 0x0F) + ((unsigned char)(stenoContents[x*3] * divisor))) % 255;
-		unsigned char xc2 = ((unsigned char)(stenoContents[(x*3)+1] * divisor));
-		unsigned char xc3 = (((filecontents[x] >> 4) & 0x0F) + ((unsigned char)(stenoContents[(x*3)+2] * divisor))) % 255;
+		// 0x07 | 0x03 | 0x07
+		//    3 |    2 |    0
+		unsigned char xc1 =  ((filecontents[x]       & 0x07) + ((unsigned char)(stenoContents[x*3]     * divisor))) % 255;
+		unsigned char xc2 = (((filecontents[x] >> 3) & 0x03) + ((unsigned char)(stenoContents[(x*3)+1] * divisor))) % 255;
+		unsigned char xc3 = (((filecontents[x] >> 5) & 0x07) + ((unsigned char)(stenoContents[(x*3)+2] * divisor))) % 255;
 
 		fwrite(&xc1, 1, 1, writeFile);
 		fwrite(&xc2, 1, 1, writeFile);
