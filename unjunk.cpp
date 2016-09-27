@@ -99,4 +99,6 @@ int main(int argc, char **argv)
 	}
 
 	fclose(writeFile);
+	free(filecontents);
+	free(stenoContents);
 }

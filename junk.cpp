@@ -186,4 +186,6 @@ int main(int argc, char **argv)
 	}
 
 	fclose(writeFile);
+	free(stenoContents);
+	free(filecontents);
 }
