@@ -1,17 +1,79 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <math.h>
 
 #ifndef _MSC_VER
 #define fopen_s(pFile,filename,mode) ((*(pFile))=fopen((filename),(mode)))==NULL
 #endif
 
-double calcLuma(unsigned char red, unsigned char green, unsigned char blue)
+typedef struct s_params
 {
-	double nits;
-	nits = (.27 * (unsigned char)red) + (.67 * (unsigned char)green) + (.06 * (unsigned char)blue);
-	return nits;
+	bool dryRun;
+	char *inputFilename;
+	char *outputFilename;
+	char *blendFilename;
+	int canExecute; // equals 7 when true
+} params;
+
+params commandParams(char* arguments[], int argCount)
+{
+	char y, *command;
+	params p;
+	p.canExecute = 0;
+	
+	for(int CycleArguments = 1; CycleArguments < argCount; CycleArguments++)
+	{
+		y = (arguments[CycleArguments])[0];
+
+		if(y == '-')
+		{
+			command = arguments[CycleArguments];
+			++command;
+			
+			if(strcmp(command, "i") == 0)
+			{
+				// Get the port, it will be the next "command"
+				if(CycleArguments + 1 < argCount){
+					command = arguments[++CycleArguments];
+					p.inputFilename = (char*)malloc(sizeof(char) * (strlen(command) + 1));
+					memcpy(p.inputFilename, command, strlen(command)+1);
+					p.canExecute |= 0x01;
+				}
+			}
+			else if(strcmp(command, "o") == 0)
+			{
+				if(CycleArguments + 1 < argCount){
+					command = arguments[++CycleArguments];
+					p.outputFilename = (char*)malloc(sizeof(char) * (strlen(command) + 1));
+					memcpy(p.outputFilename, command, strlen(command)+1);
+					p.canExecute |= 0x02;
+				}
+			}
+			else if(strcmp(command, "b") == 0)
+			{
+				if(CycleArguments + 1 < argCount){
+					command = arguments[++CycleArguments];
+					p.blendFilename = (char*)malloc(sizeof(char) * (strlen(command) + 1));
+					memcpy(p.blendFilename, command, strlen(command)+1);
+					p.canExecute |= 0x04;
+				}
+			}
+			else if(strcmp(command, "dry") == 0)
+			{
+				p.dryRun = true;
+			}
+		}
+	}
+	return p;
 }
+
+// double calcLuma(unsigned char red, unsigned char green, unsigned char blue)
+// {
+// 	double nits;
+// 	nits = (.27 * (unsigned char)red) + (.67 * (unsigned char)green) + (.06 * (unsigned char)blue);
+// 	return nits;
+// }
 
 unsigned char *loadFile(char *pszFilename, long *lgSize)
 {
@@ -75,7 +137,7 @@ unsigned char *readBMP(char *pszFilename, long *lgSize)
 	          (bitmapInfoHeader[21] << 8)  | 
 	          (bitmapInfoHeader[22] << 16) | 
 	          (bitmapInfoHeader[23] << 24);
-	h = (long) rawsize - 54;
+	h = (long) rawsize;
 
 	mem = (unsigned char*)malloc(h+1);
 	if(mem == NULL)
@@ -93,28 +155,48 @@ unsigned char *readBMP(char *pszFilename, long *lgSize)
 
 int main(int argc, char **argv)
 {
-	long fileSize, stenoSize;
+	long fileSize, blendSize, leftOvers;
 	unsigned int w, h, m = 0;
 	FILE *writeFile;
 	unsigned char *filecontents = 0;
-	unsigned char *stenoContents = 0;
+	unsigned char *blendContents = 0;
 	unsigned char xorChar = 0x3d;
+	params p;
 
-	filecontents = loadFile(argv[1], &fileSize);
+	p = commandParams(argv, argc);
+
+	//printf("DryRun: %d\nCanExecute: %d\n", p.dryRun, p.canExecute);
+
+	if(p.canExecute != 7 && !(p.canExecute == 1 && p.dryRun))
+	{
+		printf("Incorrect parameters:\n");
+		printf("-i inputfile -b blendfile -o outputfile [-dry]\n");
+		return -1;
+	}
+
+	filecontents = loadFile(p.inputFilename, &fileSize);
 	if(!filecontents)
 	{
 		printf("main(): bad file\n");
 		return -1;
 	}
 
-	stenoContents = readBMP(argv[2], &stenoSize);
-	if(!stenoContents)
+	unsigned int sqrtAct = (unsigned int)ceil(sqrt(fileSize + m));
+	w = h = (sqrtAct + (4 - (sqrtAct % 4)));
+	
+	if(p.canExecute == 1 && p.dryRun){
+		printf("Blend bitmap must be exactly %d pixels wide and at least that in height.\n", w);
+		return 1;
+	}
+
+	blendContents = readBMP(p.blendFilename, &blendSize);
+	if(!blendContents)
 	{
-		printf("main(): bad steno file\n");
+		printf("main(): bad blend file\n");
 		return -1;
 	}
 
-	fopen_s(&writeFile, argv[3], "wb");
+	fopen_s(&writeFile, p.outputFilename, "wb");
 	if(!writeFile)
 	{
 		printf("main(): bad output file\n");
@@ -125,13 +207,13 @@ int main(int argc, char **argv)
 	unsigned char bmpinfoheader[40] = { 40,0,0,0, 0,0,0,0, 0,0,0,0, 1,0,   24,0,      0,0,0,0, 0,0,0,0,  0x13,0x0B,0,0, 0x13,0x0B,0,0, 0,0,0,0, 0,0,0,0 };
 	//                                 // size      width    height   plane  bit depth           rawsize   DPI horiz      DPI vert       palette  imp colors
 
-	unsigned int sqrtAct = (unsigned int)ceil(sqrt(fileSize + m));
-	w = h = (sqrtAct + (4 - (sqrtAct % 4)));
+	// unsigned int sqrtAct = (unsigned int)ceil(sqrt(fileSize + m));
+	// w = h = (sqrtAct + (4 - (sqrtAct % 4)));
 
-	//unsigned int sqrtNormal = (unsigned int)ceil(sqrt((sqrtAct * sqrtAct) / 3));
-	//w = h = (sqrtNormal + (4 - (sqrtNormal % 4))) * 3;
+	// //unsigned int sqrtNormal = (unsigned int)ceil(sqrt((sqrtAct * sqrtAct) / 3));
+	// //w = h = (sqrtNormal + (4 - (sqrtNormal % 4))) * 3;
 
-	printf("%d\n", w);
+	// printf("%d\n", w);
 
 	unsigned int rawsize = (w * 3) * h;
 	unsigned int bmpsize = 54 + rawsize;
@@ -162,30 +244,34 @@ int main(int argc, char **argv)
 	for(unsigned int x = 0; x < fileSize; x++)
 	{
 		// green/yellow dominates high intensity whitish colors, trying to combat that.
-		//int luma = (int)(calcLuma(stenoContents[(x*3)+2], stenoContents[(x*3)+1], stenoContents[x*3]) + 0.5);
+		//int luma = (int)(calcLuma(blendContents[(x*3)+2], blendContents[(x*3)+1], blendContents[x*3]) + 0.5);
 		double divisor = 0.90; //1;
 
-		//if(luma >= 180 || stenoContents[(x*3)+1] >= 180)
+		//if(luma >= 180 || blendContents[(x*3)+1] >= 180)
 		//	divisor = 0.90;
 		
 		// 0x07 | 0x03 | 0x07
 		//    3 |    2 |    0
-		unsigned char xc1 =  ((filecontents[x]       & 0x07) + ((unsigned char)(stenoContents[x*3]     * divisor))) % 255;
-		unsigned char xc2 = (((filecontents[x] >> 3) & 0x03) + ((unsigned char)(stenoContents[(x*3)+1] * divisor))) % 255;
-		unsigned char xc3 = (((filecontents[x] >> 5) & 0x07) + ((unsigned char)(stenoContents[(x*3)+2] * divisor))) % 255;
+		unsigned char xc1 =  ((filecontents[x]       & 0x07) + ((unsigned char)(blendContents[x*3]     * divisor))) % 255;
+		unsigned char xc2 = (((filecontents[x] >> 3) & 0x03) + ((unsigned char)(blendContents[(x*3)+1] * divisor))) % 255;
+		unsigned char xc3 = (((filecontents[x] >> 5) & 0x07) + ((unsigned char)(blendContents[(x*3)+2] * divisor))) % 255;
 
 		fwrite(&xc1, 1, 1, writeFile);
 		fwrite(&xc2, 1, 1, writeFile);
 		fwrite(&xc3, 1, 1, writeFile);
 	}
 
-	for(unsigned int x = 0; x < rawsize - (fileSize * 3); x++)
+	leftOvers = fileSize * 3;
+
+	for(unsigned int x = 0; x < (rawsize - leftOvers) - 1; x++)
 	{
-		unsigned char xc = stenoContents[(fileSize * 3) + x];
+		unsigned char xc = blendContents[leftOvers + x];
 		fwrite(&xc, 1, 1, writeFile);
 	}
 
 	fclose(writeFile);
-	free(stenoContents);
+	free(blendContents);
 	free(filecontents);
+
+	return 0;
 }
