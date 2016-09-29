@@ -68,13 +68,6 @@ params commandParams(char* arguments[], int argCount)
 	return p;
 }
 
-// double calcLuma(unsigned char red, unsigned char green, unsigned char blue)
-// {
-// 	double nits;
-// 	nits = (.27 * (unsigned char)red) + (.67 * (unsigned char)green) + (.06 * (unsigned char)blue);
-// 	return nits;
-// }
-
 unsigned char *loadFile(char *pszFilename, long *lgSize)
 {
 	FILE *TARGET;
@@ -161,11 +154,10 @@ int main(int argc, char **argv)
 	unsigned char *filecontents = 0;
 	unsigned char *blendContents = 0;
 	unsigned char xorChar = 0x3d;
+	double divisor = 0.90;
 	params p;
 
 	p = commandParams(argv, argc);
-
-	//printf("DryRun: %d\nCanExecute: %d\n", p.dryRun, p.canExecute);
 
 	if(p.canExecute != 7 && !(p.canExecute == 1 && p.dryRun))
 	{
@@ -204,16 +196,9 @@ int main(int argc, char **argv)
 	}
 
 	unsigned char bmpfileheader[14] = { 'B', 'M', 0,0,0,0, 0,0, 0,0, 54,0,0,0 };
+	                                   // 0x06-0x09 are reserved and not used by the definition, store the offset of where the file ends
 	unsigned char bmpinfoheader[40] = { 40,0,0,0, 0,0,0,0, 0,0,0,0, 1,0,   24,0,      0,0,0,0, 0,0,0,0,  0x13,0x0B,0,0, 0x13,0x0B,0,0, 0,0,0,0, 0,0,0,0 };
-	//                                 // size      width    height   plane  bit depth           rawsize   DPI horiz      DPI vert       palette  imp colors
-
-	// unsigned int sqrtAct = (unsigned int)ceil(sqrt(fileSize + m));
-	// w = h = (sqrtAct + (4 - (sqrtAct % 4)));
-
-	// //unsigned int sqrtNormal = (unsigned int)ceil(sqrt((sqrtAct * sqrtAct) / 3));
-	// //w = h = (sqrtNormal + (4 - (sqrtNormal % 4))) * 3;
-
-	// printf("%d\n", w);
+	                                   // size      width    height   plane  bit depth           rawsize   DPI horiz      DPI vert       palette  imp colors
 
 	unsigned int rawsize = (w * 3) * h;
 	unsigned int bmpsize = 54 + rawsize;
@@ -222,6 +207,12 @@ int main(int argc, char **argv)
 	bmpfileheader[3] = (unsigned char)(bmpsize>>8);
 	bmpfileheader[4] = (unsigned char)(bmpsize>>16);
 	bmpfileheader[5] = (unsigned char)(bmpsize>>24);
+
+	// Not part of the definition, this tells the "decoder" where the file stops within the image
+	bmpfileheader[6] = (unsigned char)(fileSize);
+	bmpfileheader[7] = (unsigned char)(fileSize>>8);
+	bmpfileheader[8] = (unsigned char)(fileSize>>16);
+	bmpfileheader[9] = (unsigned char)(fileSize>>24);
 
 	bmpinfoheader[4] = (unsigned char)(w);
 	bmpinfoheader[5] = (unsigned char)(w>>8);
@@ -243,15 +234,6 @@ int main(int argc, char **argv)
 
 	for(unsigned int x = 0; x < fileSize; x++)
 	{
-		// green/yellow dominates high intensity whitish colors, trying to combat that.
-		//int luma = (int)(calcLuma(blendContents[(x*3)+2], blendContents[(x*3)+1], blendContents[x*3]) + 0.5);
-		double divisor = 0.90; //1;
-
-		//if(luma >= 180 || blendContents[(x*3)+1] >= 180)
-		//	divisor = 0.90;
-		
-		// 0x07 | 0x03 | 0x07
-		//    3 |    2 |    0
 		unsigned char xc1 =  ((filecontents[x]       & 0x07) + ((unsigned char)(blendContents[x*3]     * divisor))) % 255;
 		unsigned char xc2 = (((filecontents[x] >> 3) & 0x03) + ((unsigned char)(blendContents[(x*3)+1] * divisor))) % 255;
 		unsigned char xc3 = (((filecontents[x] >> 5) & 0x07) + ((unsigned char)(blendContents[(x*3)+2] * divisor))) % 255;
@@ -264,7 +246,13 @@ int main(int argc, char **argv)
 	leftOvers = fileSize * 3;
 
 	for(unsigned int x = 0; x < (rawsize - leftOvers) - 1; x++)
+	//for(unsigned int x = 0; x < (blendSize - rawsize); x++)
 	{
+		if(leftOvers + x > blendSize)
+		{ 
+			printf("\n Overflow at: %d\n", leftOvers + x);
+			break;
+		}
 		unsigned char xc = blendContents[leftOvers + x];
 		fwrite(&xc, 1, 1, writeFile);
 	}

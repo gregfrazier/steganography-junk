@@ -6,7 +6,7 @@
 #define fopen_s(pFile,filename,mode) ((*(pFile))=fopen((filename),(mode)))==NULL
 #endif
 
-unsigned char *readBMP(char *pszFilename, long *lgSize)
+unsigned char *readBMP(char *pszFilename, long *lgSize, long *offset)
 {
 	FILE *TARGET;
 	unsigned char *mem;
@@ -33,6 +33,12 @@ unsigned char *readBMP(char *pszFilename, long *lgSize)
 		return 0;
 	}
 
+	if(offset != 0)
+		*offset = bitmapFileHeader[6]         | 
+		          (bitmapFileHeader[7] << 8)  | 
+		          (bitmapFileHeader[8] << 16) | 
+		          (bitmapFileHeader[9] << 24);
+		
 	fseek(TARGET, 54, SEEK_SET);
 	rawsize = bitmapInfoHeader[20]         | 
 	          (bitmapInfoHeader[21] << 8)  | 
@@ -40,7 +46,7 @@ unsigned char *readBMP(char *pszFilename, long *lgSize)
 	          (bitmapInfoHeader[23] << 24);
 	h = (long) rawsize - 54;
 
-	printf("%d\n", rawsize);
+	//printf("%d\n", rawsize);
 
 	mem = (unsigned char*)malloc(h+1);
 	if(mem == NULL)
@@ -58,21 +64,25 @@ unsigned char *readBMP(char *pszFilename, long *lgSize)
 
 int main(int argc, char **argv)
 {
-	long fileSize, stenoSize;
+	long fileSize, stenoSize, endOffset;
 	unsigned int w, h;
 	FILE *writeFile;
 	unsigned char xorChar = 0x3d;
 	unsigned char *filecontents = 0;
 	unsigned char *stenoContents = 0;
 
-	filecontents = readBMP(argv[1], &fileSize);
+	filecontents = readBMP(argv[1], &fileSize, &endOffset);
 	if(filecontents == 0)
 	{
 		printf("main(): bad bmp file\n");
 		return -1;
 	}
 
-	stenoContents = readBMP(argv[2], &stenoSize);
+	endOffset *= 3;
+
+	//printf("Offset: %d\n", endOffset);
+
+	stenoContents = readBMP(argv[2], &stenoSize, 0);
 	if(stenoContents == 0)
 	{
 		printf("main(): bad steno bmp file\n");
@@ -87,6 +97,8 @@ int main(int argc, char **argv)
 	}
 
 	double divisor = 0.90;
+
+	fileSize = fileSize >= endOffset ? endOffset : fileSize;
 
 	for(unsigned int x = 0; x < fileSize; x += 3)
 	{
