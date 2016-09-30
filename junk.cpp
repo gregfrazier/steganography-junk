@@ -98,7 +98,7 @@ unsigned char *loadFile(char *pszFilename, long *lgSize)
 	return mem;
 }
 
-unsigned char *readBMP(char *pszFilename, long *lgSize)
+unsigned char *readBMP(char *pszFilename, long *lgSize, unsigned int *width, unsigned int *height)
 {
 	FILE *TARGET;
 	unsigned char *mem;
@@ -132,6 +132,18 @@ unsigned char *readBMP(char *pszFilename, long *lgSize)
 	          (bitmapInfoHeader[23] << 24);
 	h = (long) rawsize;
 
+    *width = (unsigned int) 
+             (bitmapInfoHeader[4]        | 
+	         (bitmapInfoHeader[5] << 8)  | 
+	         (bitmapInfoHeader[6] << 16) | 
+	         (bitmapInfoHeader[7] << 24));
+	
+	*height = (unsigned int) 
+	          (bitmapInfoHeader[8]         | 
+	          (bitmapInfoHeader[9] << 8)   | 
+	          (bitmapInfoHeader[10] << 16) | 
+	          (bitmapInfoHeader[11] << 24));
+	
 	mem = (unsigned char*)malloc(h+1);
 	if(mem == NULL)
 	{
@@ -148,8 +160,8 @@ unsigned char *readBMP(char *pszFilename, long *lgSize)
 
 int main(int argc, char **argv)
 {
-	long fileSize, blendSize, leftOvers;
-	unsigned int w, h, m = 0;
+	long fileSize, blendSize, over;
+	unsigned int w, h, m = 0, blendWidth, blendHeight;
 	FILE *writeFile;
 	unsigned char *filecontents = 0;
 	unsigned char *blendContents = 0;
@@ -181,7 +193,7 @@ int main(int argc, char **argv)
 		return 1;
 	}
 
-	blendContents = readBMP(p.blendFilename, &blendSize);
+	blendContents = readBMP(p.blendFilename, &blendSize, &blendWidth, &blendHeight);
 	if(!blendContents)
 	{
 		printf("main(): bad blend file\n");
@@ -214,15 +226,15 @@ int main(int argc, char **argv)
 	bmpfileheader[8] = (unsigned char)(fileSize>>16);
 	bmpfileheader[9] = (unsigned char)(fileSize>>24);
 
-	bmpinfoheader[4] = (unsigned char)(w);
-	bmpinfoheader[5] = (unsigned char)(w>>8);
-	bmpinfoheader[6] = (unsigned char)(w>>16);
-	bmpinfoheader[7] = (unsigned char)(w>>24);
+	bmpinfoheader[4] = (unsigned char)(blendWidth);
+	bmpinfoheader[5] = (unsigned char)(blendWidth>>8);
+	bmpinfoheader[6] = (unsigned char)(blendWidth>>16);
+	bmpinfoheader[7] = (unsigned char)(blendWidth>>24);
 
-	bmpinfoheader[8] = (unsigned char)(h);
-	bmpinfoheader[9] = (unsigned char)(h>>8);
-	bmpinfoheader[10] = (unsigned char)(h>>16);
-	bmpinfoheader[11] = (unsigned char)(h>>24);
+	bmpinfoheader[8] = (unsigned char)(blendHeight);
+	bmpinfoheader[9] = (unsigned char)(blendHeight>>8);
+	bmpinfoheader[10] = (unsigned char)(blendHeight>>16);
+	bmpinfoheader[11] = (unsigned char)(blendHeight>>24);
 
 	bmpinfoheader[20] = (unsigned char)(rawsize);
 	bmpinfoheader[21] = (unsigned char)(rawsize>>8);
@@ -243,17 +255,11 @@ int main(int argc, char **argv)
 		fwrite(&xc3, 1, 1, writeFile);
 	}
 
-	leftOvers = fileSize * 3;
+	over = fileSize * 3;
 
-	for(unsigned int x = 0; x < (rawsize - leftOvers) - 1; x++)
-	//for(unsigned int x = 0; x < (blendSize - rawsize); x++)
+	for(unsigned int x = over; x < blendSize; x++)
 	{
-		if(leftOvers + x > blendSize)
-		{ 
-			printf("\n Overflow at: %d\n", leftOvers + x);
-			break;
-		}
-		unsigned char xc = blendContents[leftOvers + x];
+		unsigned char xc = blendContents[x] * divisor;
 		fwrite(&xc, 1, 1, writeFile);
 	}
 
