@@ -1,10 +1,76 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
+#include <string.h>
 
 #ifndef _MSC_VER
 #define fopen_s(pFile,filename,mode) ((*(pFile))=fopen((filename),(mode)))==NULL
 #endif
+
+typedef struct s_params
+{
+	char *inputFilename;
+	char *outputFilename;
+	char *blendFilename;
+	long fileSize;
+	int canExecute; // equals 7 when true
+} params;
+
+params commandParams(char* arguments[], int argCount)
+{
+	char y, *command;
+	params p;
+	p.canExecute = 0;
+	p.fileSize = 0;
+	
+	for(int CycleArguments = 1; CycleArguments < argCount; CycleArguments++)
+	{
+		y = (arguments[CycleArguments])[0];
+
+		if(y == '-')
+		{
+			command = arguments[CycleArguments];
+			++command;
+			
+			if(strcmp(command, "i") == 0)
+			{
+				// Get the port, it will be the next "command"
+				if(CycleArguments + 1 < argCount){
+					command = arguments[++CycleArguments];
+					p.inputFilename = (char*)malloc(sizeof(char) * (strlen(command) + 1));
+					memcpy(p.inputFilename, command, strlen(command)+1);
+					p.canExecute |= 0x01;
+				}
+			}
+			else if(strcmp(command, "o") == 0)
+			{
+				if(CycleArguments + 1 < argCount){
+					command = arguments[++CycleArguments];
+					p.outputFilename = (char*)malloc(sizeof(char) * (strlen(command) + 1));
+					memcpy(p.outputFilename, command, strlen(command)+1);
+					p.canExecute |= 0x02;
+				}
+			}
+			else if(strcmp(command, "b") == 0)
+			{
+				if(CycleArguments + 1 < argCount){
+					command = arguments[++CycleArguments];
+					p.blendFilename = (char*)malloc(sizeof(char) * (strlen(command) + 1));
+					memcpy(p.blendFilename, command, strlen(command)+1);
+					p.canExecute |= 0x04;
+				}
+			}
+			else if(strcmp(command, "s") == 0)
+			{
+				if(CycleArguments + 1 < argCount){
+					command = arguments[++CycleArguments];
+					p.fileSize = atoi(command);
+				}
+			}
+		}
+	}
+	return p;
+}
 
 unsigned char *readBMP(char *pszFilename, long *lgSize, long *offset)
 {
@@ -70,11 +136,21 @@ int main(int argc, char **argv)
 	unsigned char xorChar = 0x3d;
 	unsigned char *filecontents = 0;
 	unsigned char *stenoContents = 0;
+	params p;
 
-	filecontents = readBMP(argv[1], &fileSize, &endOffset);
+	p = commandParams(argv, argc);
+
+	if(p.canExecute != 7)
+	{
+		printf("Incorrect parameters:\n");
+		printf("-i inputfile -b blendfile -o outputfile [-s size_in_bytes]\n");
+		return -1;
+	}
+
+	filecontents = readBMP(p.inputFilename, &fileSize, &endOffset);
 	if(filecontents == 0)
 	{
-		printf("main(): bad bmp file\n");
+		printf("main(): bad input file\n");
 		return -1;
 	}
 
@@ -82,14 +158,14 @@ int main(int argc, char **argv)
 
 	//printf("Offset: %d\n", endOffset);
 
-	stenoContents = readBMP(argv[2], &stenoSize, 0);
+	stenoContents = readBMP(p.blendFilename, &stenoSize, 0);
 	if(stenoContents == 0)
 	{
-		printf("main(): bad steno bmp file\n");
+		printf("main(): bad blend file\n");
 		return -1;
 	}
 
-	fopen_s(&writeFile, argv[3], "wb");
+	fopen_s(&writeFile, p.outputFilename, "wb");
 	if(!writeFile)
 	{
 		printf("main(): bad output file\n");
@@ -98,7 +174,16 @@ int main(int argc, char **argv)
 
 	double divisor = 0.90;
 
-	fileSize = fileSize >= endOffset ? endOffset : fileSize;
+	if(endOffset == 0)
+		printf("Embedded filesize not found. Please specify one as an argument. Decoding using full size of input file.\n",);
+
+	if(p.fileSize <= 0){
+		fileSize = fileSize >= endOffset ? endOffset : fileSize;
+	} else {
+		fileSize = fileSize >= p.fileSize ? p.fileSize : fileSize;
+	}
+
+	printf("Output Filesize: %u\n", fileSize);
 
 	for(unsigned int x = 0; x < fileSize; x += 3)
 	{
